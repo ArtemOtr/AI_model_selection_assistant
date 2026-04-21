@@ -1,6 +1,6 @@
 import asyncio
 from typing import Any, Dict
-from mws_scraper import MWSTableScraper
+from agents.mws_scraper import MWSTableScraper
 import pandas as pd
 
 

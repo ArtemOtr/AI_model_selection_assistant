@@ -34,7 +34,7 @@ class SelectionTools:
         self._parser_agent = parser_agent
 
     def get_models_snapshot(self) -> list[dict[str, Any]]:
-        """Вернуть актуальный слепок таблицы моделей из ParserCacheAgent."""
+        """Возвращает актуальный словарь моделей из ParserCacheAgent."""
         return self._parser_agent.get_models_dict()
 
     def _estimate_monthly_cost(self, model: dict[str, Any], req: SelectionRequirements) -> dict[str, Any]:
@@ -64,7 +64,8 @@ class SelectionTools:
         - отсекает модели по жестким ограничениям
         - без эфемерных скоров
         """
-        req = SelectionRequirements(**requirements)
+        allowed_keys = SelectionRequirements.__dataclass_fields__.keys()
+        req = SelectionRequirements(**{k: v for k, v in requirements.items() if k in allowed_keys})
         models = self._parser_agent.get_models_dict()
 
         filtered: list[dict[str, Any]] = []
