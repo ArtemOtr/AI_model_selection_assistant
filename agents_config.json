@@ -1,0 +1,25 @@
+{
+  "default": "llama-3.3-70b",
+  "models": {
+    "llama-3.3-70b": {
+      "provider": "huggingface",
+      "model": "huggingface/together/meta-llama/Llama-3.3-70B-Instruct",
+      "api_key_env": "HF_TOKEN"
+    },
+    "qwen-72b": {
+      "provider": "huggingface",
+      "model": "huggingface/together/Qwen/Qwen2.5-72B-Instruct",
+      "api_key_env": "HF_TOKEN"
+    },
+    "groq-llama": {
+      "provider": "groq",
+      "model": "groq/llama-3.3-70b-versatile",
+      "api_key_env": "GROQ_API_KEY"
+    },
+    "gemini-flash": {
+      "provider": "gemini",
+      "model": "gemini/gemini-2.0-flash",
+      "api_key_env": "GOOGLE_API_KEY"
+    }
+  }
+}

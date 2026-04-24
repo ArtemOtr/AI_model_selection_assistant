@@ -45,33 +45,3 @@ class MWSTableScraper():
 
         return merged_models
 
-
-if __name__ == "__main__":
-    model_info_url = "https://mws.ru/docs/cloud-platform/gpt/general/gpt-models.html"
-
-    model_cost_url = "https://mws.ru/docs/cloud-platform/gpt/general/pricing.html"
-    scraper = MWSTableScraper(model_info_url, model_cost_url)
-    df = scraper.get_merged_tables()
-    print("ИТОГОВАЯ ТАБЛИЦА (первые 5 строк):")
-    print(df.head())
-    print("\n" + "=" * 80)
-    print("ИНФОРМАЦИЯ О ТИПАХ ДАННЫХ:")
-    print(df.dtypes)
-    print("\n" + "=" * 80)
-    print("ПРОВЕРКА ПРЕОБРАЗОВАНИЙ:")
-    print("1. Формат ввода (должен быть списком):")
-    for idx, row in df.iterrows():
-        print(f"   {row['model']}: {row['input_format']} (тип: {type(row['input_format'])})")
-    print("\n2. Пример цен (должны быть float, прочерк → 0.0):")
-    print(f"   bge-m3 promo_output_price_per_1k_tokens = {df.loc[df['model']=='bge-m3', 'promo_output_price_per_1k_tokens'].values[0]}")
-    print(f"   deepseek-r1-distill-qwen-32b input_price_per_1k_tokens = {df.loc[df['model']=='deepseek-r1-distill-qwen-32b', 'input_price_per_1k_tokens'].values[0]}")
-    print("\n3. Контекст и размер модели (float):")
-    print(f"   bge-m3 context_thousands_tokens = {df.loc[df['model']=='bge-m3', 'context_thousands_tokens'].values[0]} (тип {type(df.loc[df['model']=='bge-m3', 'context_thousands_tokens'].values[0])})")
-    print(f"   llama-3.3-70b-instruct model_size_billion_params = {df.loc[df['model']=='llama-3.3-70b-instruct', 'model_size_billion_params'].values[0]}")
-
-
-'''
-отфильтровать таблицы
-написать класс и методы скрапера
-преобрзовать все в json
-'''

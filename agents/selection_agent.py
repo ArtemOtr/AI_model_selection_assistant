@@ -28,6 +28,7 @@ class SelectionRequirements:
 
 
 class SelectionTools:
+
     def __init__(self, parser_agent: ParserCacheAgent):
         self._parser_agent = parser_agent
 
@@ -53,13 +54,14 @@ class SelectionTools:
 
             min_context = requirements.get("required_context_k_tokens")
             min_size = requirements.get("min_model_size_b")
+            max_size = requirements.get("max_model_size_b")
 
             # 1. контекст
             if min_context is not None and context < min_context:
                 continue
 
             # 2. размер модели
-            if min_size is not None and size < min_size:
+            if min_size is not None and (size < min_size or size > max_size):
                 continue
 
             if budget is not None and monthly_requests and avg_in and avg_out:
@@ -87,8 +89,12 @@ class SelectionTools:
             "selected_models": len(filtered),
         }
 
-
     def score_models(self, payload: dict[str, Any]) -> dict[str, Any]:
+
+        if "payload" in payload and isinstance(payload["payload"], dict):
+            inner = payload["payload"]
+            if "requirements" in inner and "candidates" in inner:
+                payload = inner
 
         req = SelectionRequirements(**payload["requirements"])
         candidates = payload["candidates"]
@@ -96,32 +102,44 @@ class SelectionTools:
         scored = []
 
         for c in candidates:
-
-            # качество (размер + контекст)
             quality = c["size_b"] / 70.0 + c["context_k"] / 128.0
-
-            # скорость (чем меньше контекст — тем быстрее)
             latency = 1 / (1 + c["context_k"])
 
-            # стоимость
-            cost = 1  # если нет точной стоимости в фильтре → нейтрально
-            if req.avg_input_tokens:
-                cost = 1  # можно расширить позже
+            # Оценка стоимости
+            cost = 1.0
+            if req.avg_input_tokens and req.avg_output_tokens and req.monthly_requests:
+                model_full = None
+                for m in self._parser_agent.get_models_dict():
+                    if m.get("model") == c["model"]:
+                        model_full = m
+                        break
+
+                if model_full:
+                    in_price = float(model_full.get("input_price_per_1k_tokens", 0.0))
+                    out_price = float(model_full.get("output_price_per_1k_tokens", 0.0))
+
+                    total_cost = (
+                            (req.monthly_requests * req.avg_input_tokens / 1000) * in_price +
+                            (req.monthly_requests * req.avg_output_tokens / 1000) * out_price
+                    )
+                    cost = 1 / (1 + total_cost)
 
             final_score = (
-                req.quality_priority * quality +
-                req.cost_priority * cost +
-                req.latency_priority * latency
+                    req.quality_priority * quality +
+                    req.cost_priority * cost +
+                    req.latency_priority * latency
             )
 
-            c["score"] = final_score
+            c["score"] = round(final_score, 4)
             scored.append(c)
 
         scored.sort(key=lambda x: x["score"], reverse=True)
 
+        top_k = req.top_k if req.top_k else len(scored)  # если top_k=None, показываем всех
+
         return {
-            "top_k": req.top_k,
-            "results": scored[:req.top_k],
+            "top_k": top_k,
+            "results": scored[:top_k],
             "all_scored": scored,
         }
 
@@ -151,6 +169,7 @@ def build_selection_agent(
     avg_output_tokens,
     required_context_k_tokens,
     min_model_size_b,
+    max_model_size_b
     quality_priority,
     cost_priority,
     latency_priority,
@@ -161,6 +180,11 @@ def build_selection_agent(
 - только этот словарь
 - null если нет данных
 ---
+
+Если пользователь не говорит конкретных чисел, то попытайся их подобрать. Например, если он говорит, что модель нужна мелнькая, то пиши, что max_model_size_b : 32.
+Тоже самое относится к цене. По задаче пользователя попытайся определить сколько ему нужно monthly_requests и avg_input_tokens. Но если ты не уверен, то лучше оставляй null в значениях словаря.
+Рассчитай примерно также quality_priority, cost_priority, latency_priority.
+Заполняй таким образом если полностью уверен в предлагаемых тобой цифрах.
 
 ШАГ 2:
 - вызови filter_models_by_requirements(requirements) и получи список моделей, которые соответствуют пожеланиям пользователя. Список моделей будет находится в поле candidates возвращаемого
@@ -185,13 +209,17 @@ def build_selection_agent(
 
 ## ПРИМЕР 1: Подбор модели для чат-бота поддержки с ограниченным бюджетом
 
-**Пользователь:** "Нужна модель для чат-бота службы поддержки интернет-магазина. Бюджет до 5000 рублей в месяц. 
-Ожидаем около 100 000 запросов в месяц, средняя длина вопроса 500 токенов, ответа — 300 токенов. Желательно, чтобы контекст был не меньше 16 тысяч токенов.
- Качество ответов очень важно, скорость тоже имеет значение, но цена вторична — главное уложиться в бюджет. Покажи топ-3 варианта."
+**Пользователь:** "Нужна модель для чат-бота службы поддержки интернет-магазина. Бюджет до 5000 рублей в месяц. Ожидаем около 100 000 запросов в месяц, средняя длина вопроса 500 токенов, ответа — 300 токенов. Желательно, чтобы контекст был не меньше 16 тысяч токенов. Качество ответов очень важно, скорость тоже имеет значение, но цена вторична — главное уложиться в бюджет. Покажи топ-3 варианта."
 
 **Действия агента:**
 
 1. **Извлечение требований (ШАГ 1):**
+   - Пользователь САМ назвал конкретные цифры → используем их как есть, ничего не придумываем
+   - «Качество очень важно» → quality_priority = 0.6
+   - «Скорость имеет значение» → latency_priority = 0.2
+   - «Цена вторична» → cost_priority = 0.2
+   - Все цифры даны пользователем → я УВЕРЕН, заполняю всё
+
 ```python
 {
     "task_type": "chatbot",
@@ -202,6 +230,7 @@ def build_selection_agent(
     "avg_output_tokens": 300,
     "required_context_k_tokens": 16.0,
     "min_model_size_b": None,
+    "max_model_size_b": None,
     "quality_priority": 0.6,
     "cost_priority": 0.2,
     "latency_priority": 0.2,
@@ -244,19 +273,28 @@ def build_selection_agent(
 **Действия агента:**
 
 1. **Извлечение требований (ШАГ 1):**
+   - Пользователь сказал «быстро» → повышаем latency_priority до 0.4
+   - Пользователь сказал «недорого» → повышаем cost_priority до 0.4
+   - Качество implicitly важно для перевода → quality_priority = 0.2
+   - Задача «перевод текстов» — обычно это средние объёмы: можно предположить monthly_requests = 50000, avg_input_tokens = 500, avg_output_tokens = 500
+   - Конкретных цифр по бюджету нет → budget_rub_month = None
+   - Требований к размеру модели нет → min_model_size_b = None, max_model_size_b = None
+   - Я УВЕРЕН в цифрах 50000/500/500 для задачи перевода → заполняю их
+
 ```python
 {
     "task_type": "translation",
     "domain": None,
     "budget_rub_month": None,
-    "monthly_requests": None,
-    "avg_input_tokens": None,
-    "avg_output_tokens": None,
+    "monthly_requests": 50000,
+    "avg_input_tokens": 500,
+    "avg_output_tokens": 500,
     "required_context_k_tokens": None,
     "min_model_size_b": None,
-    "quality_priority": 0.5,
-    "cost_priority": 0.3,
-    "latency_priority": 0.2,
+    "max_model_size_b": None,
+    "quality_priority": 0.2,
+    "cost_priority": 0.4,
+    "latency_priority": 0.4,
     "top_k": 3
 }
 2. Вызов инструментов (ШАГ 2 и 3):

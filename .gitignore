@@ -4,3 +4,4 @@ __pycache__/
 cache/
 .adk/
 .cursor/
+check_api_with_open_ai_client.py
