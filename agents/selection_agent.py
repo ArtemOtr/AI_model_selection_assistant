@@ -28,6 +28,19 @@ class SelectionRequirements:
 
 
 class SelectionTools:
+    '''
+        Класс, предстоавляющий инструменты агенту
+
+        Методы (инструменты агента):
+            get_models_snapshot() -> list[dict]
+            Возвращает актуальный список всех моделей из кэша.
+
+            filter_models_by_requirements(requirements: dict) -> dict
+            Фильтрует модели по требованиям пользователя, суммаризированных агентом
+
+            score_models(payload: dict) -> dict
+            Оценивает отфильтрованные модели по трем критериям
+    '''
 
     def __init__(self, parser_agent: ParserCacheAgent):
         self._parser_agent = parser_agent
@@ -149,6 +162,7 @@ def build_selection_agent(
     parser_agent: ParserCacheAgent,
     model_name: str = "gemini-2.0-flash",
 ) -> LlmAgent:
+    '''Построение агента через Google ADK'''
 
     tools = SelectionTools(parser_agent)
     from google.adk.agents import LlmAgent

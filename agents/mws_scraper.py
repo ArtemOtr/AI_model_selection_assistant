@@ -2,6 +2,7 @@ import pandas as pd
 
 
 class MWSTableScraper():
+    '''Парсер таблиц с MWS с инфой о моделях и биллингами в pandas'''
     def __init__(self, model_info_url, model_cost_url, cache_ttl_seconds=600):
         self.info_url = model_info_url
         self.cost_url = model_cost_url

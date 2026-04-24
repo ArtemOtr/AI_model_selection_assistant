@@ -7,8 +7,8 @@ import pandas as pd
 
 class ParserCacheAgent():
     '''
-    асинхронный класс, который будет проверять умер кэш или нет и по таймеру внутри себя
-    основная функция будет выдавать json с модельками
+    Класс, который будет проверять умер кэш или нет и по таймеру внутри себя
+    Основная функция: выдавать json с модельками
     '''
     def __init__(self, ttl: int = 300, models_info_url = "https://mws.ru/docs/cloud-platform/gpt/general/gpt-models.html", models_cost_url = "https://mws.ru/docs/cloud-platform/gpt/general/pricing.html" ):
         self._ttl = ttl
