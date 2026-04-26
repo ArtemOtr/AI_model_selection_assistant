@@ -156,15 +156,45 @@
 **GET /v1/models:**
 
 ```json
-{"object": "list",
-  "data":
-  [
-    {"id": "llama-3.3-70b", "object": "model", "created": 1777039497, "owned_by": "huggingface"},
-    {"id": "qwen-72b", "object": "model", "created": 1777039497, "owned_by": "huggingface"}, 
-    {"id": "groq-llama", "object": "model", "created": 1777039497, "owned_by": "groq"}, 
-    {"id": "gemini-flash", "object": "model", "created": 1777039497, "owned_by": "gemini"}
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "llama-3.3-70b",
+      "object": "model",
+      "created": 1777227604,
+      "owned_by": "huggingface"
+    },
+    {
+      "id": "qwen-72b",
+      "object": "model",
+      "created": 1777227604,
+      "owned_by": "huggingface"
+    },
+    {
+      "id": "groq-llama",
+      "object": "model",
+      "created": 1777227604,
+      "owned_by": "groq"
+    },
+    {
+      "id": "gemini-flash",
+      "object": "model",
+      "created": 1777227604,
+      "owned_by": "gemini"
+    },
+    {
+      "id": "mistral-large",
+      "object": "model",
+      "created": 1777227604,
+      "owned_by": "groq"
+    }
   ]
 }
+```
+**GET /health:**
+```json
+{"status": "ok"}
 ```
 
 ---
