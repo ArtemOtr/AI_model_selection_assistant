@@ -18,6 +18,7 @@ class SelectionRequirements:
 
     required_context_k_tokens: float | None = None
     min_model_size_b: float | None = None
+    max_model_size_b: float | None = None
 
     quality_priority: float = 0.5
     cost_priority: float = 0.3
@@ -74,7 +75,9 @@ class SelectionTools:
                 continue
 
             # 2. размер модели
-            if min_size is not None and (size < min_size or size > max_size):
+            if min_size is not None and size < min_size:
+                continue
+            if max_size is not None and size > max_size:
                 continue
 
             if budget is not None and monthly_requests and avg_in and avg_out:
@@ -109,6 +112,13 @@ class SelectionTools:
             if "requirements" in inner and "candidates" in inner:
                 payload = inner
 
+        if "candidates" not in payload:
+            return {
+                "error": "Нет candidates для скоринга. Сначала вызови filter_models_by_requirements.",
+                "results": [],
+                "all_scored": []
+            }
+
         req = SelectionRequirements(**payload["requirements"])
         candidates = payload["candidates"]
 
@@ -118,7 +128,6 @@ class SelectionTools:
             quality = c["size_b"] / 70.0 + c["context_k"] / 128.0
             latency = 1 / (1 + c["context_k"])
 
-            # Оценка стоимости
             cost = 1.0
             if req.avg_input_tokens and req.avg_output_tokens and req.monthly_requests:
                 model_full = None
@@ -148,7 +157,7 @@ class SelectionTools:
 
         scored.sort(key=lambda x: x["score"], reverse=True)
 
-        top_k = req.top_k if req.top_k else len(scored)  # если top_k=None, показываем всех
+        top_k = req.top_k if req.top_k else len(scored)
 
         return {
             "top_k": top_k,
@@ -220,6 +229,11 @@ def build_selection_agent(
 - НЕ делай ranking сам
 - ranking делает Python (score_models)
 - строго tool-based pipeline
+- ВСЕ ДАННЫЕ МЕЖДУ ШАГАМИ ПЕРЕДАВАЙ "AS IS":
+  - Результат filter_models_by_requirements (ВЕСЬ словарь целиком, не изменяя его структуру) передавай в score_models
+  - НЕ переупаковывай данные
+  - НЕ меняй ключи (candidates должно остаться candidates, а не models)
+  - НЕ выбрасывай поля из candidates (context_k, size_b обязательны)
 
 ## ПРИМЕР 1: Подбор модели для чат-бота поддержки с ограниченным бюджетом
 

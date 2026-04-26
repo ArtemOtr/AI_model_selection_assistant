@@ -3,7 +3,7 @@ import json
 import logging
 import time
 from http import HTTPStatus
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -22,9 +22,9 @@ OpenAI-совместимые Pydantic-схемы для запросов и о�
 ModelObject          — одна модель в списке (id, владелец, временная метка)
 ListModelsResponse   — ответ на GET /v1/models (список моделей)
 ChatMessage          — одно сообщение в диалоге (роль + текст)
-ChatCompletionRequest — тело POST /v1/chat/completions (модель + история)
+ChatCompletionRequest — тело POST /v1/chat/completions (модель + история + session_id)
 ChatCompletionChoice  — один вариант ответа ассистента
-ChatCompletionResponse — финальный ответ (id, модель, список choices)
+ChatCompletionResponse — финальный ответ (id, модель, список choices, usage)
 '''
 class ModelObject(BaseModel):
     id: str
@@ -43,7 +43,12 @@ class ChatMessage(BaseModel):
 class ChatCompletionRequest(BaseModel):
     model: str
     messages: List[ChatMessage]
+    session_id: Optional[str] = None
 
+class UsageInfo(BaseModel):
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
 
 class ChatCompletionChoice(BaseModel):
     index: int = 0
@@ -56,6 +61,8 @@ class ChatCompletionResponse(BaseModel):
     created: int = Field(default_factory=lambda: int(time.time()))
     model: str
     choices: List[ChatCompletionChoice]
+    usage: UsageInfo = UsageInfo()
+    session_id: Optional[str] = None
 
 
 session_service = InMemorySessionService()
@@ -69,6 +76,7 @@ async def handle_request(reader: asyncio.StreamReader, writer: asyncio.StreamWri
     """
         Главный обработчик HTTP-запросов. Вызывается asyncio для каждого нового подключения
         Роутинг:
+    - GET  /health
     - GET  /v1/models ================> список доступных моделей агента (берется из agents_config.json)
     - POST /v1/chat/completions ====>  чат-запрос к агенту
     - всё остальное ================>  404
@@ -96,7 +104,9 @@ async def handle_request(reader: asyncio.StreamReader, writer: asyncio.StreamWri
             body = await reader.readexactly(content_length)
 
         # Роутинг
-        if path == "/v1/models" and method == "GET":
+        if path == "/health" and method == "GET":
+            await send_json(writer, HTTPStatus.OK, {"status": "ok"})
+        elif path == "/v1/models" and method == "GET":
             await handle_models(writer)
         elif path == "/v1/chat/completions" and method == "POST":
             await handle_chat(writer, body)
@@ -136,12 +146,12 @@ async def handle_models(writer: asyncio.StreamWriter):
 async def handle_chat(writer: asyncio.StreamWriter, body: bytes):
     """
     Обработчик POST /v1/chat/completions — эндпоинт OpenAI API для чат-взаимодействия.
+    Поддерживает session_id для follow-up диалога.
 
     Аргументы:
         writer: asyncio.StreamWriter — канал для отправки JSON-ответа клиенту
         body: bytes — тело HTTP-запроса (JSON)
     """
-
 
     logger.info("POST /v1/chat/completions")
     try:
@@ -153,7 +163,8 @@ async def handle_chat(writer: asyncio.StreamWriter, body: bytes):
 
     # выбор модели
     requested_model = req.model or DEFAULT_MODEL
-    logger.info(f"User requested model: {requested_model}")
+    session_id = req.session_id
+    logger.info(f"User requested model: {requested_model}, session: {session_id}")
 
     # создание агента с нужной LLM
     try:
@@ -170,14 +181,25 @@ async def handle_chat(writer: asyncio.StreamWriter, body: bytes):
         session_service=session_service,
     )
 
-
     user_message = req.messages[-1].content if req.messages else ""
 
-
     try:
-        session = await session_service.create_session(
-            app_name="mws_chat", user_id="default_user"
-        )
+        if session_id:
+            # пытаемся получить существующую сессию
+            session = await session_service.get_session(
+                app_name="mws_chat", user_id="default_user", session_id=session_id
+            )
+            if not session:
+                # если не найдена – создаём новую с переданным id
+                session = await session_service.create_session(
+                    app_name="mws_chat", user_id="default_user", session_id=session_id
+                )
+        else:
+            session = await session_service.create_session(
+                app_name="mws_chat", user_id="default_user"
+            )
+            session_id = session.id  # запоминаем автосгенерированный id
+
         content = genai_types.Content(
             role="user",
             parts=[genai_types.Part.from_text(text=user_message)],
@@ -199,7 +221,11 @@ async def handle_chat(writer: asyncio.StreamWriter, body: bytes):
         choice = ChatCompletionChoice(
             message=ChatMessage(role="assistant", content=final_text)
         )
-        resp = ChatCompletionResponse(model=requested_model, choices=[choice])
+        resp = ChatCompletionResponse(
+            model=requested_model,
+            choices=[choice],
+            session_id=session_id
+        )
         await send_json(writer, HTTPStatus.OK, resp.model_dump())
     except Exception as e:
         logger.exception("Agent error")

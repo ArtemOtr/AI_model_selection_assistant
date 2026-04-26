@@ -1,5 +1,5 @@
 {
-  "default": "llama-3.3-70b",
+  "default": "mistral-large",
   "models": {
     "llama-3.3-70b": {
       "provider": "huggingface",
@@ -20,6 +20,11 @@
       "provider": "gemini",
       "model": "gemini/gemini-2.0-flash",
       "api_key_env": "GOOGLE_API_KEY"
+    },
+    "mistral-large": {
+      "provider": "groq",
+      "model": "mistral/mistral-large-latest",
+      "api_key_env": "MISTRAL_API_KEY"
     }
   }
 }
